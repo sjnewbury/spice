@@ -1,0 +1,92 @@
+# Copyright 1999-2011 Gentoo Foundation
+# Distributed under the terms of the GNU General Public License v2
+# $Header: /var/cvsroot/gentoo-x86/app-emulation/spice/spice-0.8.1.ebuild,v 1.2 2011/05/29 11:15:32 fauli Exp $
+
+EAPI=5
+PYTHON_COMPAT=( python{3_2,3_3} )
+EGIT_HAS_SUBMODULES=1
+
+inherit autotools eutils python-any-r1 git-2
+
+DESCRIPTION="SPICE server and client."
+HOMEPAGE="http://spice-space.org/"
+SRC_URI=""
+EGIT_REPO_URI="git://git.freedesktop.org/git/spice/${PN}"
+LICENSE="LGPL-2.1"
+SLOT="0"
+KEYWORDS=""
+IUSE="+client +gui sasl smartcard static-libs opengl"
+
+RDEPEND=">=x11-libs/pixman-0.17.7
+	>=dev-libs/glib-2.22:2
+	>=media-libs/celt-0.5.1.1:0.5.1
+	dev-libs/openssl
+	virtual/jpeg
+	sys-libs/zlib
+	sasl? ( dev-libs/cyrus-sasl )
+	smartcard? ( >=app-emulation/libcacard-0.1.2 )
+	client? (
+		media-libs/alsa-lib
+		>=x11-libs/libXrandr-1.2
+		x11-libs/libX11
+		x11-libs/libXext
+		>=x11-libs/libXinerama-1.0
+		x11-libs/libXfixes
+		x11-libs/libXrender
+	)"
+
+# broken as we don't have static alsa-lib and building that one static requires more work
+#		static? (
+#			>=x11-libs/pixman-0.17.7[static-libs(+)]
+#			media-libs/celt:0.5.1[static-libs(+)]
+#			virtual/jpeg[static-libs(+)]
+#			sys-libs/zlib[static-libs(+)]
+#			media-libs/alsa-lib[static-libs(-)]
+#			>=x11-libs/libXrandr-1.2[static-libs(+)]
+#			x11-libs/libX11[static-libs(+)]
+#			x11-libs/libXext[static-libs(+)]
+#			x11-libs/libXinerama[static-libs(+)]
+#			x11-libs/libXfixes[static-libs(+)]
+#			x11-libs/libXrender[static-libs(+)]
+#		)
+#	)"
+DEPEND="virtual/pkgconfig
+	$(python_gen_any_dep \
+		'>=dev-python/pyparsing-1.5.6-r2[${PYTHON_USEDEP}]')
+	${RDEPEND}"
+
+python_check_deps() {
+	has_version ">=dev-python/pyparsing-1.5.6-r2[${PYTHON_USEDEP}]"
+}
+
+# maintainer notes:
+# * opengl support is currently broken
+# * add slirp for tunnel-support
+
+pkg_setup() {
+	python-single-r1_pkg_setup
+}
+
+src_prepare() {
+	mkdir -p m4
+	eautoreconf
+}
+
+src_configure() {
+	local myconf=""
+	use gui && myconf+="--enable-gui "
+	econf ${myconf} \
+		--disable-tunnel \
+		$(use_enable opengl) \
+		$(use_enable client) \
+		$(use_with sasl) \
+		$(use_enable smartcard) \
+		--disable-werror
+#		$(use_enable static-libs static) \
+
+}
+
+src_install() {
+	default
+	use static-libs || prune_libtool_files
+}

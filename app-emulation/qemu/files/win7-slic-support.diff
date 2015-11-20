@@ -1,0 +1,148 @@
+Based on patch from Michael Tokarev <mjt@tls.msk.ru>
+
+Original commit message:
+    
+When building RSDT table, pick OEM ID fields from uer-supplied SLIC
+table instead of using hard-coded QEMU defaults.  This way, say,
+OEM version of Windows7 can be run inside qemu using the same OEM
+activation as on bare metal, by pointing at system firmware:
+
+  -acpitable file=/sys/firmware/acpi/tables/SLIC
+
+Windows7 requires that OEM ID in RSDT matches those in SLIC to
+consider SLIC to be valid.
+
+In UEFI mode, win7 checks FACP too.
+
+This is somewhat hackish approach, but it works fairy well in
+practice.
+    
+
+--- /dev/null	2015-11-13 23:37:13.530170578 +0000
++++ include/hw/acpi/acpi_slic.h	2015-11-17 10:02:32.402527602 +0000
+@@ -0,0 +1,11 @@
++#ifndef QEMU_HW_ACPI_SLIC_H
++#define QEMU_HW_ACPI_SLIC_H
++
++struct slic_info {
++    bool has_slic;
++    char oem_id[6];
++    char oem_table_id[8];
++};
++
++#endif /* !QEMU_HW_ACPI_SLIC_H */
++ 
+\ No newline at end of file
+--- qemu-options.hx.orig
++++ qemu-options.hx
+@@ -1358,6 +1358,8 @@ ACPI headers (possible overridden by oth
+ For data=, only data
+ portion of the table is used, all header information is specified in the
+ command line.
++If a SLIC table is supplied to qemu, then the oem_id from the SLIC table
++will be copied into the RSDT and FACP tables (this is a Debian addition).
+ ETEXI
+ 
+ DEF("smbios", HAS_ARG, QEMU_OPTION_smbios,
+--- hw/acpi/aml-build.c.orig	2015-11-17 11:23:49.190557114 +0000
++++ hw/acpi/aml-build.c	2015-11-17 11:24:27.070797115 +0000
+@@ -29,6 +29,9 @@
+ #include "qemu/bswap.h"
+ #include "qemu/bitops.h"
+ #include "hw/acpi/bios-linker-loader.h"
++#include "hw/acpi/acpi_slic.h"
++
++extern const struct slic_info oem_data;
+ 
+ static GArray *build_alloc_array(void)
+ {
+@@ -1142,10 +1145,20 @@
+     memcpy(&h->signature, sig, 4);
+     h->length = cpu_to_le32(len);
+     h->revision = rev;
+-    memcpy(h->oem_id, ACPI_BUILD_APPNAME6, 6);
+-    memcpy(h->oem_table_id, ACPI_BUILD_APPNAME4, 4);
+-    memcpy(h->oem_table_id + 4, sig, 4);
+     h->oem_revision = cpu_to_le32(1);
++    /* Apparently Win7 requires all OEM info to match (including sig)
++       in SLIC, RSDT and FACP.  Other tables should match, but is
++       unnecessary to pass "Activation".  */
++    if (oem_data.has_slic) {
++        memcpy(h->oem_id, &oem_data.oem_id, 6);
++        memcpy(h->oem_table_id, &oem_data.oem_table_id, 8);
++        if (memcmp(sig, "RSDT", 4) != 0 && memcmp(sig, "FACP", 4) != 0) 
++            memcpy(h->oem_table_id + 4, sig, 4);
++    } else {
++        memcpy(h->oem_id, ACPI_BUILD_APPNAME6, 6);
++        memcpy(h->oem_table_id, ACPI_BUILD_APPNAME4, 4);
++        memcpy(h->oem_table_id + 4, sig, 4);
++    }
+     memcpy(h->asl_compiler_id, ACPI_BUILD_APPNAME4, 4);
+     h->asl_compiler_revision = cpu_to_le32(1);
+     h->checksum = 0;
+--- hw/i386/acpi-build.c.orig	2015-11-17 11:23:49.217223948 +0000
++++ hw/i386/acpi-build.c	2015-11-17 11:25:56.191372508 +0000
+@@ -55,6 +55,7 @@
+ #include "hw/i386/acpi-dsdt.hex"
+ 
+ #include "hw/acpi/aml-build.h"
++#include "hw/acpi/acpi_slic.h"
+ 
+ #include "qapi/qmp/qint.h"
+ #include "qom/qom-qobject.h"
+@@ -121,6 +122,8 @@
+     bool pcihp_bridge_en;
+ } AcpiBuildPciBusHotplugState;
+ 
++extern const struct slic_info oem_data;
++
+ static void acpi_get_dsdt(AcpiMiscInfo *info)
+ {
+     Object *piix = piix4_pm_find();
+@@ -1599,7 +1602,11 @@
+                              true /* fseg memory */);
+ 
+     memcpy(&rsdp->signature, "RSD PTR ", 8);
+-    memcpy(rsdp->oem_id, ACPI_BUILD_APPNAME6, 6);
++    if (oem_data.has_slic) {
++        memcpy(rsdp->oem_id, &oem_data.oem_id, 6);
++    } else {
++        memcpy(rsdp->oem_id, ACPI_BUILD_APPNAME6, 6);
++    }
+     rsdp->rsdt_physical_address = cpu_to_le32(rsdt);
+     /* Address to be filled by Guest linker */
+     bios_linker_loader_add_pointer(linker, ACPI_BUILD_RSDP_FILE,
+--- hw/acpi/core.c.orig	2015-11-17 11:23:49.193890468 +0000
++++ hw/acpi/core.c	2015-11-17 11:25:57.711382442 +0000
+@@ -22,6 +22,7 @@
+ #include "hw/hw.h"
+ #include "hw/i386/pc.h"
+ #include "hw/acpi/acpi.h"
++#include "hw/acpi/acpi_slic.h"
+ #include "hw/nvram/fw_cfg.h"
+ #include "qemu/config-file.h"
+ #include "qapi/opts-visitor.h"
+@@ -29,6 +30,9 @@
+ #include "qapi-visit.h"
+ #include "qapi-event.h"
+ 
++struct slic_info oem_data;
++
++
+ struct acpi_table_header {
+     uint16_t _length;         /* our length, not actual part of the hdr */
+                               /* allows easier parsing for fw_cfg clients */
+@@ -227,6 +231,13 @@
+     /* recalculate checksum */
+     ext_hdr->checksum = acpi_checksum((const char unsigned *)ext_hdr +
+                                       ACPI_TABLE_PFX_SIZE, acpi_payload_size);
++
++    /* Copy OEM fields from SLIC for use in all relevant tables
++       (oem_id[6] + tableid[4] + tableid(sig)[4] = 14 bytes) */
++    if ((!oem_data.has_slic) && (memcmp(ext_hdr->sig, "SLIC", 4) == 0)) {
++       memcpy(&oem_data.oem_id, ext_hdr->oem_id, 14);
++       oem_data.has_slic = 1;
++    }
+ }
+ 
+ void acpi_table_add(const QemuOpts *opts, Error **errp)
