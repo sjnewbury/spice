@@ -1,0 +1,20 @@
+--- ./configure.orig	2018-02-07 23:57:07.505668796 +0000
++++ ./configure	2018-02-08 00:01:31.822496351 +0000
+@@ -5290,8 +5290,6 @@
+ if test "$gcov" = "yes" ; then
+   CFLAGS="-fprofile-arcs -ftest-coverage -g $CFLAGS"
+   LDFLAGS="-fprofile-arcs -ftest-coverage $LDFLAGS"
+-elif test "$fortify_source" = "yes" ; then
+-  CFLAGS="-O2 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2 $CFLAGS"
+ elif test "$debug" = "yes"; then
+   if compile_prog "-Og" ""; then
+       CFLAGS="-Og $CFLAGS"
+@@ -5303,8 +5301,6 @@
+   if cc_has_warning_flag "-Wno-maybe-uninitialized"; then
+       CFLAGS="-Wno-maybe-uninitialized $CFLAGS"
+   fi
+-else
+-    CFLAGS="-O2 $CFLAGS"
+ fi
+ 
+ if test "$have_asan" = "yes"; then

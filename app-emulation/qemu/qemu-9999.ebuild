@@ -1,26 +1,23 @@
-# Copyright 1999-2015 Gentoo Foundation
+# Copyright 1999-2016 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
-# $Id$
 
-EAPI=5
+EAPI="5"
 
 PYTHON_COMPAT=( python2_7 )
 PYTHON_REQ_USE="ncurses,readline"
 
-inherit eutils flag-o-matic linux-info toolchain-funcs multilib python-r1 \
-	user udev fcaps readme.gentoo pax-utils
+PLOCALES="bg de_DE fr_FR hu it tr zh_CN"
 
-BACKPORTS=
+inherit eutils flag-o-matic linux-info toolchain-funcs multilib python-r1 \
+	user udev fcaps readme.gentoo-r1 pax-utils l10n
 
 if [[ ${PV} = *9999* ]]; then
 	EGIT_REPO_URI="git://git.qemu.org/qemu.git"
 	inherit git-2
 	SRC_URI=""
 else
-	SRC_URI="http://wiki.qemu-project.org/download/${P}.tar.bz2
-	${BACKPORTS:+
-		https://dev.gentoo.org/~cardoe/distfiles/${P}-${BACKPORTS}.tar.xz}"
-	KEYWORDS="~amd64 ~ppc ~ppc64 ~x86 ~x86-fbsd"
+	SRC_URI="http://wiki.qemu-project.org/download/${P}.tar.bz2"
+	KEYWORDS="~amd64 ~arm64 ~ppc ~ppc64 ~x86 ~x86-fbsd"
 fi
 
 DESCRIPTION="QEMU + Kernel-based Virtual Machine userland tools"
@@ -28,20 +25,19 @@ HOMEPAGE="http://www.qemu.org http://www.linux-kvm.org"
 
 LICENSE="GPL-2 LGPL-2 BSD-2"
 SLOT="0"
-IUSE="accessibility +aio alsa bluetooth +caps +curl debug +fdt glusterfs \
-gtk gtk2 infiniband iscsi +jpeg \
+IUSE="accessibility +aio alsa bluetooth bzip2 +caps +curl debug +fdt glusterfs \
+gnutls nettle gcrypt gtk gtk2 infiniband iscsi +jpeg \
 kernel_linux kernel_FreeBSD lzo ncurses nfs nls numa opengl +pin-upstream-blobs
 +png pulseaudio python \
 rbd sasl +seccomp sdl sdl2 selinux smartcard snappy spice ssh static static-softmmu
-static-user systemtap tci test +threads tls usb usbredir +uuid vde +vhost-net \
-virtfs +vnc vte xattr xen xfs"
+static-user systemtap tci test +threads usb usbredir vde +vhost-net \
+virgl virtfs +vnc vte xattr xen xfs"
 
-COMMON_TARGETS="aarch64 alpha arm cris i386 m68k microblaze microblazeel mips
-mips64 mips64el mipsel or32 ppc ppc64 s390x sh4 sh4eb sparc sparc64 unicore32
-x86_64"
-
-IUSE_SOFTMMU_TARGETS="${COMMON_TARGETS} lm32 moxie ppcemb tricore xtensa xtensaeb"
-IUSE_USER_TARGETS="${COMMON_TARGETS} armeb mipsn32 mipsn32el ppc64abi32 ppc64le sparc32plus tilegx"
+COMMON_TARGETS="aarch64 alpha arm cris i386 hppa m68k microblaze microblazeel mips
+mips64 mips64el mipsel or1k ppc ppc64 s390x sh4 sh4eb sparc sparc64
+x86_64 nios2"
+IUSE_SOFTMMU_TARGETS="${COMMON_TARGETS} lm32 moxie ppcemb tricore unicore32 xtensa xtensaeb"
+IUSE_USER_TARGETS="${COMMON_TARGETS} aarch64_be armeb mipsn32 mipsn32el ppc64abi32 ppc64le sparc32plus tilegx"
 
 use_softmmu_targets=$(printf ' qemu_softmmu_targets_%s' ${IUSE_SOFTMMU_TARGETS})
 use_user_targets=$(printf ' qemu_user_targets_%s' ${IUSE_USER_TARGETS})
@@ -66,8 +62,15 @@ REQUIRED_USE="${PYTHON_REQUIRED_USE}
 # The attr lib isn't always linked in (although the USE flag is always
 # respected).  This is because qemu supports using the C library's API
 # when available rather than always using the extranl library.
+#
+# Older versions of gnutls are supported, but it's simpler to just require
+# the latest versions.  This is also why we require nettle.
+#
+# TODO: Split out tools deps into another var.  e.g. bzip2 is only used by
+# system binaries and tools, not user binaries.
 COMMON_LIB_DEPEND=">=dev-libs/glib-2.0[static-libs(+)]
 	sys-libs/zlib[static-libs(+)]
+	bzip2? ( app-arch/bzip2[static-libs(+)] )
 	xattr? ( sys-apps/attr[static-libs(+)] )"
 SOFTMMU_LIB_DEPEND="${COMMON_LIB_DEPEND}
 	>=x11-libs/pixman-0.28.0[static-libs(+)]
@@ -79,6 +82,13 @@ SOFTMMU_LIB_DEPEND="${COMMON_LIB_DEPEND}
 	curl? ( >=net-misc/curl-7.15.4[static-libs(+)] )
 	fdt? ( >=sys-apps/dtc-1.4.0[static-libs(+)] )
 	glusterfs? ( >=sys-cluster/glusterfs-3.4.0[static-libs(+)] )
+	gnutls? (
+		|| (
+			nettle? ( dev-libs/nettle:=[static-libs(+)] )
+			gcrypt? ( dev-libs/libgcrypt )
+		)
+		>=net-libs/gnutls-3.0:=[static-libs(+)]
+	)
 	gtk? (
 		gtk2? (
 			x11-libs/gtk+:2
@@ -86,12 +96,12 @@ SOFTMMU_LIB_DEPEND="${COMMON_LIB_DEPEND}
 		)
 		!gtk2? (
 			x11-libs/gtk+:3
-			vte? ( x11-libs/vte:2.90 )
+			vte? ( x11-libs/vte:2.91 )
 		)
 	)
-	infiniband? ( sys-infiniband/librdmacm:=[static-libs(+)] )
+	infiniband? ( sys-fabric/librdmacm:=[static-libs(+)] )
 	iscsi? ( net-libs/libiscsi )
-	jpeg? ( virtual/jpeg:=[static-libs(+)] )
+	jpeg? ( virtual/jpeg:0=[static-libs(+)] )
 	lzo? ( dev-libs/lzo:2[static-libs(+)] )
 	ncurses? ( sys-libs/ncurses:0=[static-libs(+)] )
 	nfs? ( >=net-fs/libnfs-1.9.3[static-libs(+)] )
@@ -100,7 +110,7 @@ SOFTMMU_LIB_DEPEND="${COMMON_LIB_DEPEND}
 		virtual/opengl
 		media-libs/libepoxy[static-libs(+)]
 		media-libs/mesa[static-libs(+)]
-		media-libs/mesa[egl,gles2]
+		media-libs/mesa[egl,gbm]
 	)
 	png? ( media-libs/libpng:0=[static-libs(+)] )
 	pulseaudio? ( media-sound/pulseaudio )
@@ -117,25 +127,24 @@ SOFTMMU_LIB_DEPEND="${COMMON_LIB_DEPEND}
 		)
 	)
 	seccomp? ( >=sys-libs/libseccomp-2.1.0[static-libs(+)] )
-	smartcard? ( dev-libs/nss app-emulation/libcacard )
+	smartcard? ( >=app-emulation/libcacard-2.5.0[static-libs(+)] )
 	snappy? ( app-arch/snappy[static-libs(+)] )
 	spice? (
 		>=app-emulation/spice-protocol-0.12.3
 		>=app-emulation/spice-0.12.0[static-libs(+)]
 	)
 	ssh? ( >=net-libs/libssh2-1.2.8[static-libs(+)] )
-	tls? ( net-libs/gnutls[static-libs(+)] )
 	usb? ( >=virtual/libusb-1-r2[static-libs(+)] )
 	usbredir? ( >=sys-apps/usbredir-0.6[static-libs(+)] )
-	uuid? ( >=sys-apps/util-linux-2.16.0[static-libs(+)] )
 	vde? ( net-misc/vde[static-libs(+)] )
+	virgl? ( media-libs/virglrenderer[static-libs(+)] )
 	virtfs? ( sys-libs/libcap )
 	xfs? ( sys-fs/xfsprogs[static-libs(+)] )"
 USER_LIB_DEPEND="${COMMON_LIB_DEPEND}"
 X86_FIRMWARE_DEPEND="
 	>=sys-firmware/ipxe-1.0.0_p20130624
 	pin-upstream-blobs? (
-		~sys-firmware/seabios-1.8.2
+		~sys-firmware/seabios-1.10.1
 		~sys-firmware/sgabios-0.1_pre8
 		~sys-firmware/vgabios-0.7a
 	)
@@ -151,7 +160,7 @@ CDEPEND="
 	qemu_softmmu_targets_x86_64? ( ${X86_FIRMWARE_DEPEND} )
 	python? ( ${PYTHON_DEPS} )
 	systemtap? ( dev-util/systemtap )
-	xen? ( app-emulation/xen-tools )"
+	xen? ( app-emulation/xen-tools:= )"
 DEPEND="${CDEPEND}
 	dev-lang/perl
 	=dev-lang/python-2*
@@ -190,7 +199,7 @@ QA_WX_LOAD="usr/bin/qemu-i386
 	usr/bin/qemu-microblazeel
 	usr/bin/qemu-mips
 	usr/bin/qemu-mipsel
-	usr/bin/qemu-or32
+	usr/bin/qemu-or1k
 	usr/bin/qemu-ppc
 	usr/bin/qemu-ppc64
 	usr/bin/qemu-ppc64abi32
@@ -198,20 +207,24 @@ QA_WX_LOAD="usr/bin/qemu-i386
 	usr/bin/qemu-sh4eb
 	usr/bin/qemu-sparc
 	usr/bin/qemu-sparc64
-	usr/bin/qemu-tilegx
 	usr/bin/qemu-armeb
 	usr/bin/qemu-sparc32plus
 	usr/bin/qemu-s390x
-	usr/bin/qemu-unicore32"
+	usr/bin/qemu-unicore32
+	usr/bin/qemu-xtensa
+	usr/bin/qemu-xtensaeb"
 
 DOC_CONTENTS="If you don't have kvm compiled into the kernel, make sure
 you have the kernel module loaded before running kvm. The easiest way to
 ensure that the kernel module is loaded is to load it on boot.\n
-For AMD CPUs the module is called 'kvm-amd'\n
-For Intel CPUs the module is called 'kvm-intel'\n
-Please review /etc/conf.d/modules for how to load these\n\n
+For AMD CPUs the module is called 'kvm-amd'.\n
+For Intel CPUs the module is called 'kvm-intel'.\n
+Please review /etc/conf.d/modules for how to load these.\n\n
 Make sure your user is in the 'kvm' group\n
-Just run 'gpasswd -a <USER> kvm', then have <USER> re-login."
+Just run 'gpasswd -a <USER> kvm', then have <USER> re-login.\n\n
+For brand new installs, the default permissions on /dev/kvm might not let you
+access it.  You can tell udev to reset ownership/perms:\n
+udevadm trigger -c add /dev/kvm"
 
 qemu_support_kvm() {
 	if use qemu_softmmu_targets_x86_64 || use qemu_softmmu_targets_i386 \
@@ -277,8 +290,9 @@ check_targets() {
 
 	pushd "${S}"/default-configs >/dev/null || die
 
-	detected=$(echo $(printf '%s\n' *-${mak}.mak | sed "s:-${mak}.mak::" | sort -u))
-	sorted=$(echo $(printf '%s\n' ${!var} | sort -u))
+	# Force C locale until glibc is updated. #564936
+	detected=$(echo $(printf '%s\n' *-${mak}.mak | sed "s:-${mak}.mak::" | LC_COLLATE=C sort -u))
+	sorted=$(echo $(printf '%s\n' ${!var} | LC_COLLATE=C sort -u))
 	if [[ ${sorted} != "${detected}" ]] ; then
 		eerror "The ebuild needs to be kept in sync."
 		eerror "${var}: ${sorted}"
@@ -287,6 +301,29 @@ check_targets() {
 	fi
 
 	popd >/dev/null
+}
+
+handle_locales() {
+	# Make sure locale list is kept up-to-date.
+	local detected sorted
+	detected=$(echo $(cd po && printf '%s\n' *.po | grep -v messages.po | sed 's:.po$::' | sort -u))
+	sorted=$(echo $(printf '%s\n' ${PLOCALES} | sort -u))
+	if [[ ${sorted} != "${detected}" ]] ; then
+		eerror "The ebuild needs to be kept in sync."
+		eerror "PLOCALES: ${sorted}"
+		eerror " po/*.po: ${detected}"
+		die "sync PLOCALES"
+	fi
+
+	# Deal with selective install of locales.
+	if use nls ; then
+		# Delete locales the user does not want. #577814
+		rm_loc() { rm po/$1.po || die; }
+		l10n_for_each_disabled_locale_do rm_loc
+	else
+		# Cheap hack to disable gettext .mo generation.
+		rm -f po/*.po
+	fi
 }
 
 src_prepare() {
@@ -298,14 +335,8 @@ src_prepare() {
 		-e 's/^(C|OP_C|HELPER_C)FLAGS=/\1FLAGS+=/' \
 		Makefile Makefile.target || die
 
-	# Cheap hack to disable gettext .mo generation.
-	use nls || rm -f po/*.po
-
-	#epatch "${FILESDIR}"/qemu-1.7.0-cflags.patch
-	epatch "${FILESDIR}"/win7-slic-support.diff
-	[[ -n ${BACKPORTS} ]] && \
-		EPATCH_FORCE=yes EPATCH_SUFFIX="patch" EPATCH_SOURCE="${S}/patches" \
-			epatch
+	epatch "${FILESDIR}"/${PN}-9999-cflags.patch
+	epatch "${FILESDIR}"/${PN}-2.5.0-sysmacros.patch
 
 	# Fix ld and objcopy being called directly
 	tc-export AR LD OBJCOPY
@@ -314,6 +345,9 @@ src_prepare() {
 	MAKEOPTS+=" V=1"
 
 	epatch_user
+
+	# Run after we've applied all patches.
+	handle_locales
 }
 
 ##
@@ -338,6 +372,7 @@ qemu_src_configure() {
 		--disable-guest-agent
 		--disable-strip
 		--disable-werror
+		$(use_enable gcrypt)
 		--python="${PYTHON}"
 		--cc="$(tc-getCC)"
 		--cxx="$(tc-getCXX)"
@@ -361,11 +396,15 @@ qemu_src_configure() {
 	conf_opts+=(
 		$(conf_softmmu accessibility brlapi)
 		$(conf_softmmu aio linux-aio)
+		$(conf_softmmu bzip2)
 		$(conf_softmmu bluetooth bluez)
 		$(conf_softmmu caps cap-ng)
 		$(conf_softmmu curl)
 		$(conf_softmmu fdt)
 		$(conf_softmmu glusterfs)
+		$(conf_softmmu gnutls)
+		$(conf_softmmu nettle)
+		$(conf_softmmu gcrypt)
 		$(conf_softmmu gtk)
 		$(conf_softmmu infiniband rdma)
 		$(conf_softmmu iscsi libiscsi)
@@ -387,9 +426,9 @@ qemu_src_configure() {
 		$(conf_softmmu ssh libssh2)
 		$(conf_softmmu usb libusb)
 		$(conf_softmmu usbredir usb-redir)
-		$(conf_softmmu uuid)
 		$(conf_softmmu vde)
 		$(conf_softmmu vhost-net)
+		$(conf_softmmu virgl virglrenderer)
 		$(conf_softmmu virtfs)
 		$(conf_softmmu vnc)
 		$(conf_softmmu vte)
@@ -417,7 +456,6 @@ qemu_src_configure() {
 		conf_opts+=(
 			--disable-linux-user
 			--enable-system
-			--with-system-pixman
 			--audio-drv-list="${audio_opts}"
 		)
 		use gtk && conf_opts+=( --with-gtkabi=$(usex gtk2 2.0 3.0) )
@@ -428,6 +466,7 @@ qemu_src_configure() {
 			--disable-linux-user
 			--disable-system
 			--disable-blobs
+			$(use_enable bzip2)
 		)
 		static_flag="static"
 		;;
@@ -517,19 +556,65 @@ src_test() {
 qemu_python_install() {
 	python_domodule "${S}/scripts/qmp/qmp.py"
 
-	python_doscript "${S}/scripts/kvm/kvm_stat"
 	python_doscript "${S}/scripts/kvm/vmxcap"
 	python_doscript "${S}/scripts/qmp/qmp-shell"
 	python_doscript "${S}/scripts/qmp/qemu-ga-client"
 }
 
+# Generate the /etc/init.d/qemu-binfmt script which registers the user handlers.
+generate_initd() {
+	local out="${T}/qemu-binfmt"
+	local d="${T}/binfmt.d"
+
+	einfo "Generating qemu init.d script"
+
+	# Generate the debian fragments first.
+	mkdir -p "${d}"
+	"${S}"/scripts/qemu-binfmt-conf.sh \
+		--debian \
+		--exportdir "${d}" \
+		--qemu-path "${EPREFIX}/usr/bin" \
+		|| die
+	# Then turn the fragments into a shell script we can source.
+	sed -E -i \
+		-e 's:^([^ ]+) (.*)$:\1="\2":' \
+		"${d}"/* || die
+
+	# Generate the init.d script by assembling the fragments from above.
+	local f qcpu package interpreter magic mask
+	cat "${FILESDIR}"/qemu-binfmt.initd.head >"${out}" || die
+	for f in "${d}"/qemu-* ; do
+		source "${f}"
+
+		# Normalize the cpu logic like we do in the init.d for the native cpu.
+		qcpu=${package#qemu-}
+		case ${qcpu} in
+		arm*)   qcpu="arm";;
+		mips*)  qcpu="mips";;
+		ppc*)   qcpu="ppc";;
+		s390*)  qcpu="s390";;
+		sh*)    qcpu="sh";;
+		sparc*) qcpu="sparc";;
+		esac
+
+		cat <<EOF >>"${out}"
+	if [ "\${cpu}" != "${qcpu}" -a -x "${interpreter}" ] ; then
+		echo ':${package}:M::${magic}:${mask}:${interpreter}:'"\${QEMU_BINFMT_FLAGS}" >/proc/sys/fs/binfmt_misc/register
+	fi
+EOF
+	done
+	cat "${FILESDIR}"/qemu-binfmt.initd.tail >>"${out}" || die
+}
+
 src_install() {
+	generate_initd
+
 	if [[ -n ${user_targets} ]]; then
 		cd "${S}/user-build"
 		emake DESTDIR="${ED}" install
 
-		# Install binfmt handler init script for user targets
-		newinitd "${FILESDIR}/qemu-binfmt.initd-r1" qemu-binfmt
+		# Install binfmt handler init script for user targets.
+		doinitd "${T}/qemu-binfmt"
 	fi
 
 	if [[ -n ${softmmu_targets} ]]; then
@@ -563,12 +648,12 @@ src_install() {
 	doins "${FILESDIR}/bridge.conf"
 
 	# Remove the docdir placed qmp-commands.txt
-	mv "${ED}/usr/share/doc/${PF}/html/qmp-commands.txt" "${S}/docs/"
+	#mv "${ED}/usr/share/doc/${PF}/html/qmp-commands.txt" "${S}/docs/" || die
 
 	cd "${S}"
 	dodoc Changelog MAINTAINERS docs/specs/pci-ids.txt
 	newdoc pc-bios/README README.pc-bios
-	dodoc docs/*.txt
+	#dodoc docs/qmp-*.txt
 
 	if [[ -n ${softmmu_targets} ]]; then
 		# Remove SeaBIOS since we're using the SeaBIOS packaged one
@@ -622,10 +707,6 @@ pkg_postinst() {
 	fi
 
 	fcaps cap_net_admin /usr/libexec/qemu-bridge-helper
-	if use virtfs && [ -n "${softmmu_targets}" ]; then
-		local virtfs_caps="cap_chown,cap_dac_override,cap_fowner,cap_fsetid,cap_setgid,cap_mknod,cap_setuid"
-		fcaps ${virtfs_caps} /usr/bin/virtfs-proxy-helper
-	fi
 }
 
 pkg_info() {
